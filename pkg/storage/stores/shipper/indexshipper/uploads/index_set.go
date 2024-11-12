@@ -125,7 +125,7 @@ func (t *indexSet) Close() {
 
 func (t *indexSet) uploadIndex(ctx context.Context, idx index.Index) error {
 	fileName := idx.Name()
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("uploading index %s", fileName))
+	level.Info(t.logger).Log("msg", "uploading index", "file-name", fileName, "table-name", t.tableName)
 
 	idxPath := idx.Path()
 
@@ -203,7 +203,7 @@ func (t *indexSet) Cleanup(indexRetainPeriod time.Duration) error {
 	t.indexMtx.RUnlock()
 
 	for i := range filesToCleanup {
-		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("dropping uploaded index %s from table %s", filesToCleanup[i], t.tableName))
+		level.Info(util_log.Logger).Log("msg", "dropping uploaded index", "file-name", filesToCleanup[i], "table-name", t.tableName)
 
 		if err := t.removeIndex(filesToCleanup[i]); err != nil {
 			return err
