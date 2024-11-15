@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -41,7 +42,12 @@ func (f LazyIndex) GetChunkRefs(ctx context.Context, userID string, from, throug
 	if err != nil {
 		return nil, err
 	}
-	return i.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
+	refs, err := i.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
+	o := opentracing.SpanFromContext(ctx)
+	if o != nil {
+		o.LogKV("lazyIndex.GetChunkRefs", refs)
+	}
+	return refs, err
 }
 func (f LazyIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	i, err := f()

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -41,7 +43,9 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 	itr := indexIterFunc(func(f func(context.Context, Index) error) error {
 		// Ensure we query both per tenant and multitenant TSDBs
 		idxBuckets := indexBuckets(from, through, []config.TableRange{i.tableRange})
+		sb := strings.Builder{}
 		for _, bkt := range idxBuckets {
+			sb.WriteString(fmt.Sprintf("'%s' ", bkt.prefix))
 			if err := i.shipper.ForEachConcurrent(ctx, bkt.prefix, user, func(multitenant bool, idx shipperindex.Index) error {
 				impl, ok := idx.(Index)
 				if !ok {
@@ -56,6 +60,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 				return err
 			}
 		}
+		//		fmt.Printf("indices %v\n", sb.String())
 		return nil
 	})
 
@@ -89,7 +94,12 @@ func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, f
 	if err != nil {
 		return nil, err
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
+	refs, err := idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
+	o := opentracing.SpanFromContext(ctx)
+	if o != nil {
+		o.LogKV("indexShipper.GetChunkRefs", refs)
+	}
+	return refs, err
 }
 
 func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
