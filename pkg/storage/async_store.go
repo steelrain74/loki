@@ -109,7 +109,9 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 			return nil, nil, err
 		}
 	}
-
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("msg", "fetched chunk refs", "store-chunks-count", len(storeChunks), "ingester-chunks-count", len(ingesterChunks))
+	}
 	if len(ingesterChunks) == 0 {
 		return storeChunks, fetchers, nil
 	}

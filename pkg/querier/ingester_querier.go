@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
+	"github.com/opentracing/opentracing-go"
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
@@ -94,6 +95,10 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 		if err != nil {
 			return nil, err
 		}
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogKV("msg", "querier found replication set", "size", len(replicationSets))
+		}
 		return q.forGivenIngesterSets(ctx, replicationSets, f)
 	}
 
@@ -131,6 +136,10 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 			return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
+		sp := opentracing.SpanFromContext(ctx)
+		if sp != nil {
+			sp.LogKV("msg", "calling ingester", "ingester", ingester.Addr)
+		}
 		resp, err := f(ctx, client.(logproto.QuerierClient))
 		if err != nil {
 			return responseFromIngesters{addr: ingester.Addr}, err
@@ -320,12 +329,18 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 }
 
 func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IngesterQuerier.GetChunkIDs")
+	defer sp.Finish()
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
-		return querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
+		resp, err := querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
 			Matchers: convertMatchersToString(matchers),
 			Start:    from.Time(),
 			End:      through.Time(),
 		})
+		if sp != nil && resp != nil {
+			sp.LogKV("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "client", querierClient, "err", err)
+		}
+		return resp, err
 	})
 	if err != nil {
 		return nil, err
