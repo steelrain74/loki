@@ -162,8 +162,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
-
+	// level.Debug(util_log.WithContext(ctx, q.logger)).Log("msg", "building query intervals", "start", params.Start.Format(time.RFC3339), "end", params.End.Format(time.RFC3339))
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+	// level.Debug(util_log.WithContext(ctx, q.logger)).Log("msg", "built query intervals", "ingester-interval", ingesterQueryInterval, "store-interval", storeQueryInterval)
 
 	sp := opentracing.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
@@ -311,6 +312,13 @@ func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration
 }
 
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
+	return &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}, &interval{
+			start: queryStart,
+			end:   queryEnd,
+		}
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.

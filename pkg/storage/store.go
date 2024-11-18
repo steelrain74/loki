@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 
@@ -440,6 +441,7 @@ func (s *LokiStore) lazyChunks(
 			lazyChunks = append(lazyChunks, &LazyChunk{Chunk: c, Fetcher: fetchers[i]})
 		}
 	}
+	level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "lazy chunks", "count", len(lazyChunks))
 	return lazyChunks, nil
 }
 
