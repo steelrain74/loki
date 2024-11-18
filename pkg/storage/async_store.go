@@ -98,7 +98,7 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 			if sp := opentracing.SpanFromContext(ctx); sp != nil {
 				sp.LogKV("ingester-chunks-count", len(ingesterChunks))
 			}
-			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
+			level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		errs <- err
 	}()
@@ -112,6 +112,7 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("msg", "fetched chunk refs", "store-chunks-count", len(storeChunks), "ingester-chunks-count", len(ingesterChunks))
 	}
+	level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "fetched chunk refs", "store-chunks-count", len(storeChunks), "ingester-chunks-count", len(ingesterChunks))
 	if len(ingesterChunks) == 0 {
 		return storeChunks, fetchers, nil
 	}
@@ -120,7 +121,6 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 }
 
 func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
 	type f func() (*stats.Stats, error)

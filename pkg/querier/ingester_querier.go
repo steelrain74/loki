@@ -99,6 +99,10 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 		if sp != nil {
 			sp.LogKV("msg", "querier found replication set", "size", len(replicationSets))
 		}
+		level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "querier found replication set", "size", len(replicationSets))
+		for i, rs := range replicationSets {
+			level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "replication set", "index", i, "size", len(rs.Instances), "max-unavailable-zones", rs.MaxUnavailableZones, "max-errors", rs.MaxErrors, "zone-awareness-enabled", rs.ZoneAwarenessEnabled)
+		}
 		return q.forGivenIngesterSets(ctx, replicationSets, f)
 	}
 
@@ -149,7 +153,6 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 	}, func(responseFromIngesters) {
 		// Nothing to do
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +343,7 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 		if sp != nil && resp != nil {
 			sp.LogKV("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "client", querierClient, "err", err)
 		}
+		level.Debug(util_log.WithContext(ctx, q.logger)).Log("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "client", querierClient, "err", err)
 		return resp, err
 	})
 	if err != nil {
@@ -362,7 +366,6 @@ func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through mod
 			Matchers: syntax.MatchersString(matchers),
 		})
 	})
-
 	if err != nil {
 		if isUnimplementedCallError(err) {
 			// Handle communication with older ingesters gracefully
@@ -396,7 +399,6 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 			AggregateBy:  aggregateBy,
 		})
 	})
-
 	if err != nil {
 		if isUnimplementedCallError(err) {
 			// Handle communication with older ingesters gracefully
@@ -418,7 +420,6 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	ingesterResponses, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.GetDetectedLabels(ctx, req)
 	})
-
 	if err != nil {
 		level.Error(q.logger).Log("msg", "error getting detected labels", "err", err)
 		return nil, err

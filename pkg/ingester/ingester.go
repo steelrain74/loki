@@ -1212,6 +1212,7 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 	if asyncStoreMaxLookBack == 0 {
+		level.Debug(util_log.WithContext(ctx, i.logger)).Log("msg", "no async store max look back", "async-store-max-look-back", asyncStoreMaxLookBack)
 		return &logproto.GetChunkIDsResponse{}, nil
 	}
 
@@ -1243,6 +1244,7 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
 		}
 	}
+	level.Debug(util_log.WithContext(ctx, i.logger)).Log("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "start", start.Time().Format(time.RFC3339), "end", end.Time().Format(time.RFC3339))
 
 	return &resp, nil
 }
