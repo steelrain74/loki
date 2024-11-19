@@ -312,13 +312,13 @@ func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration
 }
 
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
-	return &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}, &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
+	// return &interval{
+	// 		start: queryStart,
+	// 		end:   queryEnd,
+	// 	}, &interval{
+	// 		start: queryStart,
+	// 		end:   queryEnd,
+	// 	}
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
@@ -344,7 +344,7 @@ func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time
 		// query both stores and ingesters without limiting the query interval.
 		return i, i
 	}
-
+	// ingesterMLB = 3h
 	ingesterQueryWithinRange := q.isWithinIngesterMaxLookbackPeriod(ingesterMLB, queryEnd)
 
 	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.

@@ -99,10 +99,10 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 		if sp != nil {
 			sp.LogKV("msg", "querier found replication set", "size", len(replicationSets))
 		}
-		level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "querier found replication set", "size", len(replicationSets))
-		for i, rs := range replicationSets {
-			level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "replication set", "index", i, "size", len(rs.Instances), "max-unavailable-zones", rs.MaxUnavailableZones, "max-errors", rs.MaxErrors, "zone-awareness-enabled", rs.ZoneAwarenessEnabled)
-		}
+		// level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "querier found replication set", "size", len(replicationSets))
+		// for i, rs := range replicationSets {
+		// level.Debug(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "replication set", "index", i, "size", len(rs.Instances), "max-unavailable-zones", rs.MaxUnavailableZones, "max-errors", rs.MaxErrors, "zone-awareness-enabled", rs.ZoneAwarenessEnabled)
+		// }
 		return q.forGivenIngesterSets(ctx, replicationSets, f)
 	}
 
@@ -343,7 +343,7 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 		if sp != nil && resp != nil {
 			sp.LogKV("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "client", querierClient, "err", err)
 		}
-		level.Debug(util_log.WithContext(ctx, q.logger)).Log("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "client", querierClient, "err", err)
+		// level.Debug(util_log.WithContext(ctx, q.logger)).Log("msg", "ingester responded with chunk IDs", "count", len(resp.ChunkIDs), "client", querierClient, "err", err)
 		return resp, err
 	})
 	if err != nil {
