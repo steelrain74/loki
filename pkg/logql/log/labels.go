@@ -151,6 +151,11 @@ type LabelsBuilder struct {
 	currentResult LabelsResult
 	groupedResult LabelsResult
 
+	streamBuf labels.Labels
+	metaBuf   labels.Labels
+	parsedBuf labels.Labels
+
+	res LabelsResult
 	*BaseLabelsBuilder
 }
 
@@ -190,6 +195,9 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 			base:              lbs,
 			currentResult:     labelResult,
 			BaseLabelsBuilder: b,
+			streamBuf:         make(labels.Labels, 16),
+			metaBuf:           make(labels.Labels, 16),
+			parsedBuf:         make(labels.Labels, 16),
 		}
 		return res
 	}
@@ -199,6 +207,9 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 		base:              lbs,
 		currentResult:     labelResult,
 		BaseLabelsBuilder: b,
+		streamBuf:         make(labels.Labels, 16),
+		metaBuf:           make(labels.Labels, 16),
+		parsedBuf:         make(labels.Labels, 16),
 	}
 	return res
 }
@@ -593,26 +604,29 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	}
 
 	// Now segregate the sorted labels into their categories
-	var stream, meta, parsed []labels.Label
+	// Reset slices while preserving capacity
+	b.streamBuf = b.streamBuf[:0]
+	b.metaBuf = b.metaBuf[:0]
+	b.parsedBuf = b.parsedBuf[:0]
 
 	for _, l := range b.buf {
 		// Skip error labels for stream and meta categories
 		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
-			parsed = append(parsed, l)
+			b.parsedBuf = append(b.parsedBuf, l)
 			continue
 		}
 
 		// Check which category this label belongs to
-		if labelsContain(b.add[ParsedLabel], l.Name) {
-			parsed = append(parsed, l)
-		} else if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
-			meta = append(meta, l)
+		if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
+			b.metaBuf = append(b.metaBuf, l)
+		} else if labelsContain(b.add[ParsedLabel], l.Name) {
+			b.parsedBuf = append(b.parsedBuf, l)
 		} else {
-			stream = append(stream, l)
+			b.streamBuf = append(b.streamBuf, l)
 		}
 	}
 
-	result := NewLabelsResult(b.buf.String(), hash, labels.New(stream...), labels.New(meta...), labels.New(parsed...))
+	result := NewLabelsResult(b.buf.String(), hash, labels.New(b.streamBuf...), labels.New(b.metaBuf...), labels.New(b.parsedBuf...))
 	b.resultCache[hash] = result
 
 	return result
