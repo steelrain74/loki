@@ -1,6 +1,7 @@
 package log
 
 import (
+	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -467,6 +468,10 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 
 // benchmark streamLineSampleExtractor.Process method
 func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	allocsBefore := ms.Mallocs
+
 	// Setup some test data
 	baseLabels := labels.FromStrings(
 		"namespace", "prod",
@@ -501,4 +506,13 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta...)
 	}
+
+	b.StopTimer()
+	runtime.ReadMemStats(&ms)
+	allocsAfter := ms.Mallocs
+
+	allocsPerOp := float64(allocsAfter-allocsBefore) / float64(b.N)
+	b.ReportMetric(allocsPerOp, "allocs/op")
+	b.ReportMetric(float64(ms.TotalAlloc)/float64(b.N), "bytes/op")
+	b.ReportMetric(float64(ms.NumGC), "GC-cycles")
 }

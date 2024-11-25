@@ -2149,3 +2149,19 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkReadWithStructuredMetadata(b *testing.B) {
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	fillChunk(c)
+	b.ResetTimer()
+	b.ReportAllocs()
+	ctx := context.Background()
+	for n := 0; n < b.N; n++ {
+		iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
+		for iterator.Next() {
+		}
+		if err := iterator.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
