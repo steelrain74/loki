@@ -73,6 +73,7 @@ type Config struct {
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
+	MinimiseRequests              bool             `yaml:"minimise_requests" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -87,6 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	f.BoolVar(&cfg.MinimiseRequests, "querier.minimise-requests", false, "When true, querier only sends request to one ingester for each partition and only sends a follow up on failure.")
 }
 
 // Validate validates the config.

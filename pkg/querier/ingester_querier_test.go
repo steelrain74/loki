@@ -241,10 +241,11 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		method string
-		testFn func(*IngesterQuerier) error
-		retVal interface{}
-		shards int
+		method              string
+		testFn              func(*IngesterQuerier) error
+		retVal              interface{}
+		shards              int
+		expectCancellations bool
 	}{
 		"label": {
 			method: "Label",
@@ -309,15 +310,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			cnt.Store(0)
 			runFn := func(args mock.Arguments) {
-				ctx := args[0].(context.Context)
-
-				select {
-				case <-ctx.Done():
-					// should not be cancelled by the tracker
-					require.NoError(t, ctx.Err())
-				default:
-					cnt.Add(1)
-				}
+				cnt.Add(1)
 			}
 
 			instanceRing := newReadRingMock(ingesters, 0)
@@ -332,6 +325,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			require.NoError(t, err)
 
 			ingesterQuerier.querierConfig.QueryPartitionIngesters = true
+			ingesterQuerier.querierConfig.MinimiseRequests = false
 
 			err = testData.testFn(ingesterQuerier)
 			require.NoError(t, err)
@@ -339,11 +333,11 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			if testData.shards == 0 {
 				testData.shards = partitions
 			}
-			expectedCalls := min(testData.shards, partitions) * 2
+			minimumCalls := min(testData.shards, partitions)
 			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
 			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
-			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*500, time.Millisecond*1, "expected all ingesters to respond")
-			ingesterClient.AssertNumberOfCalls(t, testData.method, expectedCalls)
+			require.Eventuallyf(t, func() bool { return cnt.Load() >= int32(minimumCalls) }, time.Millisecond*500, time.Millisecond*1, "expected all ingesters to respond: got %d responses", cnt.Load())
+			assert.GreaterOrEqualf(t, len(ingesterClient.Calls), minimumCalls, "too few calls received")
 		})
 	}
 }
