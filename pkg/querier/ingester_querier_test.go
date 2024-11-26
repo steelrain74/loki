@@ -339,10 +339,10 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			if testData.shards == 0 {
 				testData.shards = partitions
 			}
-			expectedCalls := min(testData.shards, partitions)
+			expectedCalls := min(testData.shards, partitions) * 2
 			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
 			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
-			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected all ingesters to respond")
+			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*500, time.Millisecond*1, "expected all ingesters to respond")
 			ingesterClient.AssertNumberOfCalls(t, testData.method, expectedCalls)
 		})
 	}

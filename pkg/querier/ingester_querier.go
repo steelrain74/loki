@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -110,7 +111,7 @@ func (q *IngesterQuerier) forGivenIngesterSets(ctx context.Context, replicationS
 	// Enable minimize requests so we initially query a single ingester per replication set, as each replication-set is one partition.
 	// Ingesters must supply zone information for this to have an effect.
 	config := ring.DoUntilQuorumConfig{
-		MinimizeRequests: true,
+		MinimizeRequests: false,
 	}
 	return concurrency.ForEachJobMergeResults[ring.ReplicationSet, responseFromIngesters](ctx, replicationSet, 0, func(ctx context.Context, set ring.ReplicationSet) ([]responseFromIngesters, error) {
 		return q.forGivenIngesters(ctx, set, config, f)
@@ -126,6 +127,7 @@ func defaultQuorumConfig() ring.DoUntilQuorumConfig {
 // forGivenIngesters runs f, in parallel, for given ingesters
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, quorumConfig ring.DoUntilQuorumConfig, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
 	results, err := ring.DoUntilQuorum(ctx, replicationSet, quorumConfig, func(ctx context.Context, ingester *ring.InstanceDesc) (responseFromIngesters, error) {
+		fmt.Println("calling", ingester.Addr)
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return responseFromIngesters{addr: ingester.Addr}, err
