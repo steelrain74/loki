@@ -121,6 +121,7 @@ func NewReader(writer io.Writer,
 	if tenantID != "" {
 		h.Set("X-Scope-OrgID", tenantID)
 	}
+	h.Set("Cache-Control", "no-cache")
 
 	next := time.Now()
 	bkcfg := backoff.Config{
