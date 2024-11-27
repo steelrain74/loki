@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
 	"golang.org/x/exp/slices"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
@@ -121,6 +122,63 @@ func defaultQuorumConfig() ring.DoUntilQuorumConfig {
 	return ring.DoUntilQuorumConfig{
 		// Nothing here
 	}
+}
+
+// forAllIngesters runs f, in parallel, for all ingesters
+func (q *IngesterQuerier) forAllIngestersWait(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	if q.querierConfig.QueryPartitionIngesters {
+		tenantID, err := user.ExtractOrgID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tenantShards := q.getShardCountForTenant(tenantID)
+		subring, err := q.partitionRing.ShuffleShardWithLookback(tenantID, tenantShards, q.querierConfig.QueryIngestersWithin, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		replicationSets, err := subring.GetReplicationSetsForOperation(ring.Read)
+		if err != nil {
+			return nil, err
+		}
+		return q.forGivenIngesterSetsWait(ctx, replicationSets, f)
+	}
+
+	replicationSet, err := q.ring.GetReplicationSetForOperation(ring.Read)
+	if err != nil {
+		return nil, err
+	}
+
+	return q.forGivenIngesters(ctx, replicationSet, defaultQuorumConfig(), f)
+}
+
+// forGivenIngesterSets runs f, in parallel, for given ingester sets
+func (q *IngesterQuerier) forGivenIngesterSetsWait(ctx context.Context, replicationSet []ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	return concurrency.ForEachJobMergeResults[ring.ReplicationSet, responseFromIngesters](ctx, replicationSet, 0, func(ctx context.Context, set ring.ReplicationSet) ([]responseFromIngesters, error) {
+		return q.forGivenIngestersWait(ctx, set, f)
+	})
+}
+
+// forGivenIngesters runs f, in parallel, for given ingesters
+func (q *IngesterQuerier) forGivenIngestersWait(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	g, ctx := errgroup.WithContext(ctx)
+	responses := make([]responseFromIngesters, 0, len(replicationSet.Instances))
+	for _, ingester := range replicationSet.Instances {
+		g.Go(func() error {
+			client, err := q.pool.GetClientFor(ingester.Addr)
+			if err != nil {
+				return err
+			}
+
+			resp, err := f(ctx, client.(logproto.QuerierClient))
+			if err != nil {
+				return err
+			}
+			responses = append(responses, responseFromIngesters{ingester.Addr, resp})
+			return nil
+		})
+	}
+	err := g.Wait()
+	return responses, err
 }
 
 // forGivenIngesters runs f, in parallel, for given ingesters
@@ -320,7 +378,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 }
 
 func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngestersWait(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
 			Matchers: convertMatchersToString(matchers),
 			Start:    from.Time(),
