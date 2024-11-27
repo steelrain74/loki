@@ -92,6 +92,7 @@ func NewReader(writer io.Writer,
 	streamValue string,
 	interval time.Duration,
 	queryAppend string,
+	skipCache bool,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -121,7 +122,9 @@ func NewReader(writer io.Writer,
 	if tenantID != "" {
 		h.Set("X-Scope-OrgID", tenantID)
 	}
-	h.Set("Cache-Control", "no-cache")
+	if skipCache {
+		h.Set("Cache-Control", "no-cache")
+	}
 
 	next := time.Now()
 	bkcfg := backoff.Config{

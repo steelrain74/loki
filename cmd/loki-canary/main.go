@@ -88,6 +88,7 @@ func main() {
 	spotCheckMax := flag.Duration("spot-check-max", 4*time.Hour, "How far back to check a spot check entry before dropping it")
 	spotCheckQueryRate := flag.Duration("spot-check-query-rate", 1*time.Minute, "Interval that the canary will query Loki for the current list of all spot check entries")
 	spotCheckWait := flag.Duration("spot-check-initial-wait", 10*time.Second, "How long should the spot check query wait before starting to check for entries")
+	skipCache := flag.Bool("skip-cache", false, "Whether canary requests should add the 'Cache-Control: no-cache' header when querying Loki")
 
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
@@ -188,7 +189,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *skipCache)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
