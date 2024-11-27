@@ -39,6 +39,7 @@ type Writer struct {
 
 func NewWriter(
 	writer EntryWriter,
+	sent chan time.Time,
 	entryInterval, outOfOrderMin, outOfOrderMax time.Duration,
 	outOfOrderPercentage, entrySize int,
 	logger log.Logger,
@@ -55,6 +56,7 @@ func NewWriter(
 		quit:                 make(chan struct{}),
 		done:                 make(chan struct{}),
 		logger:               logger,
+		sent:                 sent,
 	}
 
 	go w.run()
@@ -99,6 +101,7 @@ func (w *Writer) run() {
 			}
 
 			w.w.WriteEntry(t, fmt.Sprintf(LogEntry, ts, w.pad))
+			w.sent <- t
 		case <-w.quit:
 			return
 		}

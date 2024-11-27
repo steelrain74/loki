@@ -189,7 +189,7 @@ func main() {
 			entryWriter = writer.NewStreamWriter(os.Stdout, logger)
 		}
 
-		c.writer = writer.NewWriter(entryWriter, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
+		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
 		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *skipCache, *namespaceMatcher)
 		if err != nil {
