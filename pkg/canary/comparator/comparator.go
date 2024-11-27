@@ -28,6 +28,7 @@ const (
 	DebugEntryFound              = "missing websocket entry %v was found %v seconds after it was originally sent\n"
 
 	floatDiffTolerance = 1e-6
+	traceIDQueryDelay  = time.Second * 5
 )
 
 var (
@@ -476,7 +477,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 			c.missedChecks[sce]++
 			cnt := c.missedChecks[sce]
 			go func(sce *time.Time, cnt int) {
-				<-time.After(5 * time.Second)
+				<-time.After(traceIDQueryDelay)
 				entries, err := c.rdr.QueryFrontendForMetrics(adjustedStart, adjustedEnd)
 				if err != nil {
 					fmt.Fprintf(c.w, "failed to call query frontend for trace info")

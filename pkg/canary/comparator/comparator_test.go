@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 func TestComparatorEntryReceivedOutOfOrder(t *testing.T) {
@@ -345,7 +347,7 @@ func TestSpotCheck(t *testing.T) {
 	assert.Equal(t, 2, len(c.spotCheck))
 
 	expected := fmt.Sprintf(ErrSpotCheckEntryNotReceived, // List entry not received from Loki
-		entries[20].UnixNano(), "5ms")
+		entries[20].UnixNano(), "5ms", "start", "end", "unknown", 1)
 
 	// We didn't send the last entry and our initial counter did not start at 0 so we should get back entries 1-19
 	for i := 1; i < 20; i++ {
@@ -586,6 +588,10 @@ type mockReader struct {
 
 func (r *mockReader) Query(_ time.Time, _ time.Time) ([]time.Time, error) {
 	return r.resp, nil
+}
+
+func (r *mockReader) QueryFrontendForMetrics(start time.Time, end time.Time) ([]loghttp.Entry, error) {
+	return nil, nil
 }
 
 func (r *mockReader) QueryCountOverTime(queryRange string, _ time.Time, cache bool) (float64, error) {
