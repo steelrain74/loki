@@ -39,7 +39,6 @@ type Writer struct {
 
 func NewWriter(
 	writer EntryWriter,
-	sentChan chan time.Time,
 	entryInterval, outOfOrderMin, outOfOrderMax time.Duration,
 	outOfOrderPercentage, entrySize int,
 	logger log.Logger,
@@ -47,7 +46,6 @@ func NewWriter(
 
 	w := &Writer{
 		w:                    writer,
-		sent:                 sentChan,
 		interval:             entryInterval,
 		outOfOrderPercentage: outOfOrderPercentage,
 		outOfOrderMin:        outOfOrderMin,
@@ -94,14 +92,13 @@ func (w *Writer) run() {
 				var str strings.Builder
 				// Total line length includes timestamp, white space separator, new line char.  Subtract those out
 				for str.Len() < w.size-tsLen-2 {
-					str.WriteString("p")
+					str.WriteString("b")
 				}
 				w.pad = str.String()
 				w.prevTsLen = tsLen
 			}
 
 			w.w.WriteEntry(t, fmt.Sprintf(LogEntry, ts, w.pad))
-			w.sent <- t
 		case <-w.quit:
 			return
 		}

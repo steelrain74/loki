@@ -45,35 +45,37 @@ var (
 
 type LokiReader interface {
 	Query(start time.Time, end time.Time) ([]time.Time, error)
+	QueryFrontendForMetrics(start time.Time, end time.Time) ([]loghttp.Entry, error)
 	QueryCountOverTime(queryRange string, now time.Time, cache bool) (float64, error)
 }
 
 type Reader struct {
-	header          http.Header
-	useTLS          bool
-	clientTLSConfig *tls.Config
-	caFile          string
-	addr            string
-	user            string
-	pass            string
-	tenantID        string
-	httpClient      *http.Client
-	queryTimeout    time.Duration
-	sName           string
-	sValue          string
-	lName           string
-	lVal            string
-	backoff         *backoff.Backoff
-	nextQuery       time.Time
-	backoffMtx      sync.RWMutex
-	interval        time.Duration
-	conn            *websocket.Conn
-	w               io.Writer
-	recv            chan time.Time
-	quit            chan struct{}
-	shuttingDown    bool
-	done            chan struct{}
-	queryAppend     string
+	header           http.Header
+	useTLS           bool
+	clientTLSConfig  *tls.Config
+	caFile           string
+	addr             string
+	user             string
+	pass             string
+	tenantID         string
+	httpClient       *http.Client
+	queryTimeout     time.Duration
+	sName            string
+	sValue           string
+	lName            string
+	lVal             string
+	backoff          *backoff.Backoff
+	nextQuery        time.Time
+	backoffMtx       sync.RWMutex
+	interval         time.Duration
+	conn             *websocket.Conn
+	w                io.Writer
+	recv             chan time.Time
+	quit             chan struct{}
+	shuttingDown     bool
+	done             chan struct{}
+	queryAppend      string
+	namespaceMatcher string
 }
 
 func NewReader(writer io.Writer,
@@ -93,6 +95,7 @@ func NewReader(writer io.Writer,
 	interval time.Duration,
 	queryAppend string,
 	skipCache bool,
+	namespaceMatcher string,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -135,29 +138,30 @@ func NewReader(writer io.Writer,
 	bkoff := backoff.New(context.Background(), bkcfg)
 
 	rd := Reader{
-		header:          h,
-		useTLS:          useTLS,
-		clientTLSConfig: tlsConfig,
-		caFile:          caFile,
-		addr:            address,
-		user:            user,
-		pass:            pass,
-		tenantID:        tenantID,
-		queryTimeout:    queryTimeout,
-		httpClient:      httpClient,
-		sName:           streamName,
-		sValue:          streamValue,
-		lName:           labelName,
-		lVal:            labelVal,
-		nextQuery:       next,
-		backoff:         bkoff,
-		interval:        interval,
-		w:               writer,
-		recv:            receivedChan,
-		quit:            make(chan struct{}),
-		done:            make(chan struct{}),
-		shuttingDown:    false,
-		queryAppend:     queryAppend,
+		header:           h,
+		useTLS:           useTLS,
+		clientTLSConfig:  tlsConfig,
+		caFile:           caFile,
+		addr:             address,
+		user:             user,
+		pass:             pass,
+		tenantID:         tenantID,
+		queryTimeout:     queryTimeout,
+		httpClient:       httpClient,
+		sName:            streamName,
+		sValue:           streamValue,
+		lName:            labelName,
+		lVal:             labelVal,
+		nextQuery:        next,
+		backoff:          bkoff,
+		interval:         interval,
+		w:                writer,
+		recv:             receivedChan,
+		quit:             make(chan struct{}),
+		done:             make(chan struct{}),
+		shuttingDown:     false,
+		queryAppend:      queryAppend,
+		namespaceMatcher: namespaceMatcher,
 	}
 
 	go rd.run()
@@ -302,7 +306,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)) +
 			"&limit=1000",
 	}
-	fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
+	//fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
 	defer cancel()
@@ -360,6 +364,83 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 					continue
 				}
 				tss = append(tss, *ts)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unexpected result type, expected a log stream result instead received %v", value.Type())
+	}
+
+	return tss, nil
+}
+
+// QueryMeta will ask Loki for query-frontend metrics related to our canary queries
+func (r *Reader) QueryFrontendForMetrics(start time.Time, end time.Time) ([]loghttp.Entry, error) {
+	scheme := "http"
+	if r.useTLS {
+		scheme = "https"
+	}
+
+	queryStart := time.Now().Add(-30 * time.Second)
+	queryEnd := time.Now().Add(30 * time.Second)
+
+	namespaceMatcher := ""
+	if r.namespaceMatcher != "" {
+		namespaceMatcher = fmt.Sprintf("namespace=%q, ", r.namespaceMatcher)
+	}
+
+	u := url.URL{
+		Scheme: scheme,
+		Host:   r.addr,
+		Path:   "/loki/api/v1/query_range",
+		RawQuery: fmt.Sprintf("start=%d&end=%d", queryStart.UnixNano(), queryEnd.UnixNano()) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("{%scontainer=\"query-frontend\"} |= \"start=%s\" |= \"end=%s\" |= \"canary\" != \"query-frontend\"", namespaceMatcher, start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano))) +
+			"&limit=1000",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if r.user != "" {
+		req.SetBasicAuth(r.user, r.pass)
+	}
+	if r.tenantID != "" {
+		req.Header.Set("X-Scope-OrgID", r.tenantID)
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "query_range request failed")
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println("error closing body", err)
+		}
+	}()
+
+	if resp.StatusCode/100 != 2 {
+		buf, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
+	}
+
+	var decoded loghttp.QueryResponse
+	err = json.NewDecoder(resp.Body).Decode(&decoded)
+	if err != nil {
+		return nil, err
+	}
+
+	tss := []loghttp.Entry{}
+	value := decoded.Data.Result
+	switch value.Type() {
+	case logqlmodel.ValueTypeStreams:
+		for _, stream := range value.(loghttp.Streams) {
+			for _, entry := range stream.Entries {
+				tss = append(tss, entry)
 			}
 		}
 	default:

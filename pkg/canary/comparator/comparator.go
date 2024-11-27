@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ const (
 	ErrOutOfOrderEntry           = "out of order entry %s was received before entries: %v\n"
 	ErrEntryNotReceivedWs        = "websocket failed to receive entry %v within %f seconds\n"
 	ErrEntryNotReceived          = "failed to receive entry %v within %f seconds\n"
-	ErrSpotCheckEntryNotReceived = "failed to find entry %v in Loki when spot check querying %v after it was written\n"
+	ErrSpotCheckEntryNotReceived = "failed to find entry %v in Loki when spot check querying %v after it was written start=%s end=%s traceID=%s count=%d\n"
 	ErrDuplicateEntry            = "received a duplicate entry for ts %v\n"
 	ErrUnexpectedEntry           = "received an unexpected entry with ts %v\n"
 	DebugWebsocketMissingEntry   = "websocket missing entry: %v\n"
@@ -117,6 +118,7 @@ type Comparator struct {
 	entries             []*time.Time
 	missingEntries      []*time.Time
 	spotCheck           []*time.Time
+	missedChecks        map[*time.Time]int
 	ackdEntries         []*time.Time
 	wait                time.Duration
 	maxWait             time.Duration
@@ -165,6 +167,7 @@ func NewComparator(writer io.Writer,
 		w:                   writer,
 		entries:             []*time.Time{},
 		spotCheck:           []*time.Time{},
+		missedChecks:        make(map[*time.Time]int),
 		wait:                wait,
 		maxWait:             maxWait,
 		pruneInterval:       pruneInterval,
@@ -436,6 +439,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 	copy(cpy, c.spotCheck)
 	c.spotEntMtx.Unlock()
 
+	fmt.Fprintf(c.w, "Spot checking %d entries\n", len(cpy))
 	for _, sce := range cpy {
 		// Make sure enough time has passed to start checking for this entry
 		if currTime.Sub(*sce) < c.spotCheckWait {
@@ -455,18 +459,43 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 			return
 		}
 
+		if len(recvd) >= 1000 {
+			fmt.Fprint(c.w, "warn: line limit reached: ")
+		}
+
 		found := false
 		for _, r := range recvd {
 			if (*sce).Equal(r) {
 				found = true
+				delete(c.missedChecks, sce)
 				break
 			}
 		}
+
 		if !found {
-			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce.UnixNano(), currTime.Sub(*sce))
-			for _, r := range recvd {
-				fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
-			}
+			c.missedChecks[sce]++
+			cnt := c.missedChecks[sce]
+			go func(sce *time.Time, cnt int) {
+				<-time.After(5 * time.Second)
+				entries, err := c.rdr.QueryFrontendForMetrics(adjustedStart, adjustedEnd)
+				if err != nil {
+					fmt.Fprintf(c.w, "failed to call query frontend for trace info")
+				}
+				traceID := "unknown"
+				for _, entry := range entries {
+					// level=info ts=2024-11-13T14:12:05.488151738Z caller=roundtrip.go:359 org_id=29 traceID=5035763483428203 sampled=true msg="executing query" type=range query="{stream=\"stdout\",pod=\"loki-canary-ms6cv\"} " start=2024-11-13T11:45:01.33846847Z end=2024-11-13T11:45:21.33846847Z start_delta=2h27m4.149680985s end_delta=2h26m44.149681229s length=20s step=1000 query_hash=1497254681
+					index := strings.Index(entry.Line, "traceID=")
+					if index != -1 {
+						for i := index + 8; i < len(entry.Line); i++ {
+							if entry.Line[i] == ' ' {
+								traceID = entry.Line[index+8 : i]
+								break
+							}
+						}
+					}
+				}
+				fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce.UnixNano(), currTime.Sub(*sce), adjustedStart.UTC(), adjustedEnd.UTC(), traceID, cnt)
+			}(sce, cnt)
 			spotCheckMissing.Inc()
 		}
 	}
@@ -545,12 +574,12 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 
 	// This is to help debug some missing log entries when queried,
 	// let's print exactly what we are missing and what Loki sent back
-	for _, r := range c.missingEntries {
-		fmt.Fprintf(c.w, DebugWebsocketMissingEntry, r.UnixNano())
-	}
-	for _, r := range recvd {
-		fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
-	}
+	/*	for _, r := range c.missingEntries {
+			//fmt.Fprintf(c.w, DebugWebsocketMissingEntry, r.UnixNano())
+		}
+		for _, r := range recvd {
+			//fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
+		}*/
 
 	k := 0
 	for i, m := range c.missingEntries {
@@ -559,7 +588,7 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 			if (*m).Equal(r) {
 				// Entry was found in loki, this can be dropped from the list of missing
 				// which is done by NOT incrementing the output index k
-				fmt.Fprintf(c.w, DebugEntryFound, (*m).UnixNano(), currentTime.Sub(*m).Seconds())
+				//fmt.Fprintf(c.w, DebugEntryFound, (*m).UnixNano(), currentTime.Sub(*m).Seconds())
 				found = true
 			}
 		}
@@ -588,9 +617,9 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 		})
 
 	// Record the entries which were removed and never received
-	for _, e := range removed {
+	for range removed {
 		missingEntries.Inc()
-		fmt.Fprintf(c.w, ErrEntryNotReceived, e.UnixNano(), c.maxWait.Seconds())
+		//fmt.Fprintf(c.w, ErrEntryNotReceived, e.UnixNano(), c.maxWait.Seconds())
 	}
 }
 
