@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -62,6 +63,8 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, fr
 	statsCtx := statscontext.FromContext(ctx)
 	statsCtx.MergeIndex(response.Stats)
 
+	span := opentracing.SpanFromContext(ctx)
+	span.LogKV("chunks", len(result), "from", from, "through", through, "matchers", (&syntax.MatchersExpr{Mts: predicate.Matchers}).String())
 	return result, nil
 }
 

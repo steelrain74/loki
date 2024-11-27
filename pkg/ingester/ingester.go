@@ -1217,8 +1217,11 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs"))
 	pprof.SetGoroutineLabels(ctx)
 
+	span := opentracing.SpanFromContext(ctx)
+
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 	if asyncStoreMaxLookBack == 0 {
+		span.LogKV("asyncStoreMaxLookBack", "0", "chunks", "[]")
 		return &logproto.GetChunkIDsResponse{}, nil
 	}
 
@@ -1251,6 +1254,7 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		}
 	}
 
+	span.LogKV("asyncStoreMaxLookBack", asyncStoreMaxLookBack.String(), "chunks", len(resp.ChunkIDs), "start", start, "end", end, "matchers", matchers)
 	return &resp, nil
 }
 
